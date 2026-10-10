@@ -1,0 +1,6 @@
+{
+  "name": "Atal Seva Kendra Document Portal",
+  "description": "Secure document submission portal for Atal Seva Kendra / Common Service Center (CSC), replacing WhatsApp document collection with secure uploads, file security validation, and admin dashboard.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
