@@ -7,12 +7,16 @@ import {
   RefreshCw, 
   Plus, 
   CheckCircle2,
-  CloudUpload,
-  ShieldCheck,
-  Lock
+  CloudUpload
 } from 'lucide-react';
 import { Language, ManagedServiceItem } from '../../types';
 import { sanitizeText, sanitizePhone, validateIndianPhone } from '../../lib/uiSecurity';
+import { 
+  getCachedWebsiteContent, 
+  getCachedCounterStatus,
+  subscribeToCounterStatus,
+  subscribeToWebsiteContent
+} from '../../lib/apiCache';
 
 interface UploadDocumentSectionProps {
   preselectedPurpose?: string;
@@ -65,17 +69,36 @@ export const UploadDocumentSection: React.FC<UploadDocumentSectionProps> = ({
   });
 
   useEffect(() => {
+    let isMounted = true;
     fetchCsrfToken();
     checkCounterStatus();
 
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.content?.servicesList && Array.isArray(data.content.servicesList)) {
-          setAvailableServices(data.content.servicesList);
-        }
-      })
-      .catch(() => {});
+    getCachedWebsiteContent().then((content) => {
+      if (isMounted && content?.servicesList && Array.isArray(content.servicesList)) {
+        setAvailableServices(content.servicesList);
+      }
+    });
+
+    const unsubCounter = subscribeToCounterStatus((data) => {
+      if (!isMounted) return;
+      const open = typeof data.isOpen === 'boolean' ? data.isOpen : true;
+      setCounterStatus({
+        isOpen: open,
+        reason: data.reason || data.statusText || 'Counter Closed: Open Mon–Sat 8:30 AM – 7:30 PM IST',
+      });
+    });
+
+    const unsubContent = subscribeToWebsiteContent((content) => {
+      if (isMounted && content?.servicesList && Array.isArray(content.servicesList)) {
+        setAvailableServices(content.servicesList);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsubCounter();
+      unsubContent();
+    };
   }, []);
 
   useEffect(() => {
@@ -86,16 +109,13 @@ export const UploadDocumentSection: React.FC<UploadDocumentSectionProps> = ({
 
   const checkCounterStatus = async (): Promise<boolean> => {
     try {
-      const res = await fetch('/api/counter-status');
-      if (res.ok) {
-        const data = await res.json();
-        const open = typeof data.isOpen === 'boolean' ? data.isOpen : true;
-        setCounterStatus({
-          isOpen: open,
-          reason: data.reason || (data.counterStatus && data.counterStatus.statusText) || 'Counter Closed: Open Mon–Sat 8:30 AM – 7:30 PM IST',
-        });
-        return open;
-      }
+      const data = await getCachedCounterStatus();
+      const open = typeof data.isOpen === 'boolean' ? data.isOpen : true;
+      setCounterStatus({
+        isOpen: open,
+        reason: data.reason || data.statusText || 'Counter Closed: Open Mon–Sat 8:30 AM – 7:30 PM IST',
+      });
+      return open;
     } catch (e) {
       console.error('Failed to fetch counter status:', e);
     }
@@ -105,8 +125,10 @@ export const UploadDocumentSection: React.FC<UploadDocumentSectionProps> = ({
   const fetchCsrfToken = async () => {
     try {
       const res = await fetch('/api/csrf-token');
-      const data = await res.json();
-      if (data.csrfToken) setCsrfToken(data.csrfToken);
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.csrfToken) setCsrfToken(data.csrfToken);
+      }
     } catch (e) {
       console.error('Failed to fetch CSRF token:', e);
     }
@@ -593,18 +615,7 @@ export const UploadDocumentSection: React.FC<UploadDocumentSectionProps> = ({
               </div>
             )}
 
-            {/* Privacy & Security Reassurance Banner */}
-            <div className="p-3.5 rounded-2xl bg-[var(--bg-primary)] border border-[var(--color-border)] flex items-center justify-between text-xs text-[var(--color-muted-text)]">
-              <div className="flex items-center space-x-2">
-                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-[#C4F7CA] shrink-0" />
-                <span className="font-medium text-[11px] sm:text-xs">
-                  TLS Encrypted • Direct Counter Transmission • Anti-Tamper SHA-256
-                </span>
-              </div>
-              <span className="hidden sm:inline font-mono text-[10px]">
-                Maa Vaishno e-World
-              </span>
-            </div>
+
 
             {/* Prominent Bottom Submit Button Bar */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-[var(--bg-primary)] border border-[var(--color-border)] shadow-xs">

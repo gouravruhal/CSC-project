@@ -23,28 +23,7 @@ export const DEFAULT_WEBSITE_CONTENT: WebsiteContent = {
   heroSubtitle: 'Official CSC Document & Public Services Portal in Rairkalan, Panipat. Instant document uploading, printing, scanning & government forms with zero waiting time.',
   announcementBannerEnabled: false,
   announcementBannerText: 'Important: Complete biometric e-KYC for PM-Kisan and Ayushman Bharat PVC Card printing at our Kendra counter.',
-  equipmentList: [
-    {
-      id: 'eq-1',
-      name: 'High-Performance Workstation PC',
-      imageUrl: 'https://images.unsplash.com/photo-1587831990711-23ca6441447b?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-2',
-      name: 'Heavy-Duty Laser Printer & Copier',
-      imageUrl: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-3',
-      name: 'HD Optical Document Scanner',
-      imageUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-4',
-      name: 'PVC Smart Card Thermal Printer',
-      imageUrl: 'https://images.unsplash.com/photo-1563986768494-4dee2763ff3f?auto=format&fit=crop&w=600&q=80',
-    },
-  ],
+  equipmentList: [],
   servicesList: [
     { id: 'srv-1', name: 'Hindi Typing Work', category: 'Typing', isClosed: false },
     { id: 'srv-2', name: 'English Typing Work', category: 'Typing', isClosed: false },
@@ -120,42 +99,16 @@ if (fs.existsSync(LOGS_FILE)) {
 // Load Community Announcements
 if (fs.existsSync(COMMUNITY_FILE)) {
   try {
-    localCommunityPosts = JSON.parse(fs.readFileSync(COMMUNITY_FILE, 'utf-8'));
+    const raw = fs.readFileSync(COMMUNITY_FILE, 'utf-8');
+    const parsed = JSON.parse(raw);
+    localCommunityPosts = Array.isArray(parsed) ? parsed : [];
   } catch (e) {
     localCommunityPosts = [];
   }
 } else {
-  localCommunityPosts = [
-    {
-      id: 'COMM_kendra_hours_notice',
-      title: 'Maa Vaishno e-World Official Counter Timings',
-      content: 'Important Notice for all citizens of Rairkalan and nearby areas:\nOur Kendra counter working hours are Monday to Saturday from 8:30 AM to 7:30 PM IST (Sunday Closed).\nYou can upload your documents online anytime or submit work before visiting the counter for zero waiting time.',
-      category: 'Timing',
-      important: true,
-      createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-      authorName: 'Surender Bajwa (Kendra Operator)',
-    },
-    {
-      id: 'COMM_pm_kisan_notice',
-      title: 'PM-Kisan 19th Installment e-KYC Verification Started',
-      content: 'All registered farmers must complete biometric or OTP Aadhaar e-KYC to receive PM Kisan Samman Nidhi. Bring your Aadhaar card and registered mobile to the Kendra counter for instant verification.',
-      category: 'Scheme',
-      important: true,
-      createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-      authorName: 'Surender Bajwa',
-    },
-    {
-      id: 'COMM_ayushman_pvc_notice',
-      title: 'Ayushman Bharat Golden Card PVC Printing Available',
-      content: 'Get your official high-quality PVC Plastic Smart Card printed at Maa Vaishno e-World with waterproof thermal lamination. Valid across all empanelled hospitals for free cashless medical treatment up to ₹5 Lakh.',
-      category: 'Notice',
-      important: false,
-      createdAt: new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString(),
-      authorName: 'Maa Vaishno e-World CSC',
-    },
-  ];
+  localCommunityPosts = [];
   try {
-    fs.writeFileSync(COMMUNITY_FILE, JSON.stringify(localCommunityPosts, null, 2));
+    fs.writeFileSync(COMMUNITY_FILE, JSON.stringify([], null, 2));
   } catch (e) {}
 }
 
@@ -167,8 +120,8 @@ if (fs.existsSync(WEBSITE_CONTENT_FILE)) {
     localWebsiteContent = {
       ...DEFAULT_WEBSITE_CONTENT,
       ...parsed,
-      equipmentList: (parsed.equipmentList && parsed.equipmentList.length > 0) ? parsed.equipmentList : DEFAULT_WEBSITE_CONTENT.equipmentList,
-      servicesList: (parsed.servicesList && parsed.servicesList.length > 0) ? parsed.servicesList : DEFAULT_WEBSITE_CONTENT.servicesList,
+      equipmentList: Array.isArray(parsed.equipmentList) ? parsed.equipmentList : [],
+      servicesList: (Array.isArray(parsed.servicesList) && parsed.servicesList.length > 0) ? parsed.servicesList : DEFAULT_WEBSITE_CONTENT.servicesList,
     };
   } catch (e) {
     localWebsiteContent = { ...DEFAULT_WEBSITE_CONTENT };
@@ -314,9 +267,9 @@ export async function syncFromSupabase(): Promise<void> {
         heroSubtitle: wcData.hero_subtitle || localWebsiteContent.heroSubtitle,
         announcementBannerEnabled: wcData.announcement_banner_enabled ?? localWebsiteContent.announcementBannerEnabled,
         announcementBannerText: wcData.announcement_banner_text || localWebsiteContent.announcementBannerText,
-        equipmentList: (wcData.equipment_list && wcData.equipment_list.length > 0) ? wcData.equipment_list : localWebsiteContent.equipmentList,
+        equipmentList: Array.isArray(wcData.equipment_list) ? wcData.equipment_list : [],
         servicesList: (wcData.services_list && wcData.services_list.length > 0) ? wcData.services_list : localWebsiteContent.servicesList,
-        coreServices: (wcData.core_services && wcData.core_services.length > 0) ? wcData.core_services : localWebsiteContent.coreServices,
+        coreServices: Array.isArray(wcData.core_services) ? wcData.core_services : localWebsiteContent.coreServices,
         faqs: (wcData.faqs && wcData.faqs.length > 0) ? wcData.faqs : localWebsiteContent.faqs,
       });
       console.log('✅ Loaded website content configuration from Supabase.');
@@ -328,7 +281,7 @@ export async function syncFromSupabase(): Promise<void> {
       .select('*')
       .order('created_at', { ascending: false });
 
-    if (commData && !commErr && commData.length > 0) {
+    if (!commErr && Array.isArray(commData)) {
       localCommunityPosts.length = 0;
       commData.forEach((p: any) => {
         localCommunityPosts.push({
@@ -343,6 +296,7 @@ export async function syncFromSupabase(): Promise<void> {
           authorName: p.author_name,
         });
       });
+      persistCommunityData();
       console.log(`✅ Loaded ${commData.length} community posts from Supabase.`);
     }
 

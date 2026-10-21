@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 import { Language } from '../../types';
 import { translations } from '../../lib/translations';
+import { getCachedWebsiteContent, subscribeToWebsiteContent } from '../../lib/apiCache';
 
 interface AboutContactSectionProps {
   language: Language;
@@ -32,15 +33,23 @@ export const AboutContactSection: React.FC<AboutContactSectionProps> = ({ langua
   });
 
   React.useEffect(() => {
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.content) {
-          setSiteContent(data.content);
-          localStorage.setItem('mv_website_content', JSON.stringify(data.content));
-        }
-      })
-      .catch(() => {});
+    let isMounted = true;
+    getCachedWebsiteContent().then((content) => {
+      if (isMounted && content) {
+        setSiteContent(content);
+      }
+    });
+
+    const unsub = subscribeToWebsiteContent((content) => {
+      if (isMounted && content) {
+        setSiteContent(content);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   const defaultFaqs = [

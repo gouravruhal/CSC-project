@@ -7,6 +7,12 @@ import {
   Radio
 } from 'lucide-react';
 import { Language } from '../../types';
+import { 
+  getCachedWebsiteContent, 
+  getCachedCounterStatus, 
+  subscribeToCounterStatus, 
+  subscribeToWebsiteContent 
+} from '../../lib/apiCache';
 
 interface HeroSectionProps {
   onUploadClick: () => void;
@@ -34,25 +40,33 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
   });
 
   React.useEffect(() => {
-    fetch('/api/counter-status')
-      .then((res) => res.json())
-      .then((data) => {
-        if (typeof data.isOpen === 'boolean') setIsCounterOpen(data.isOpen);
-      })
-      .catch(() => {
-        const saved = localStorage.getItem('mv_counter_open');
-        if (saved !== null) setIsCounterOpen(saved === 'true');
-      });
+    let isMounted = true;
 
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data.content) {
-          setSiteContent(data.content);
-          localStorage.setItem('mv_website_content', JSON.stringify(data.content));
-        }
-      })
-      .catch(() => {});
+    // Initial fetch from cache / network
+    getCachedCounterStatus().then((status) => {
+      if (isMounted) setIsCounterOpen(status.isOpen);
+    });
+
+    getCachedWebsiteContent().then((content) => {
+      if (isMounted && content) {
+        setSiteContent(content);
+      }
+    });
+
+    // Instant real-time reactive subscriptions (0ms updates)
+    const unsubCounter = subscribeToCounterStatus((status) => {
+      if (isMounted) setIsCounterOpen(status.isOpen);
+    });
+
+    const unsubContent = subscribeToWebsiteContent((content) => {
+      if (isMounted && content) setSiteContent(content);
+    });
+
+    return () => {
+      isMounted = false;
+      unsubCounter();
+      unsubContent();
+    };
   }, []);
 
   const servicesList: Array<{ id: string; name: string; category: string; isClosed?: boolean }> =
@@ -205,11 +219,6 @@ export const HeroSection: React.FC<HeroSectionProps> = ({
                 {language === 'hi' ? 'सेवा पर क्लिक करें और सीधे दस्तावेज अपलोड करें' : 'Click any active service to immediately upload documents'}
               </p>
             </div>
-            {servicesList.length > 0 && (
-              <span className="text-[11px] font-bold text-[#30AFFF] bg-[#30AFFF]/10 px-2.5 py-1 rounded-full border border-[#30AFFF]/20">
-                {servicesList.filter(s => !s.isClosed).length} Available Services
-              </span>
-            )}
           </div>
 
           {/* Clean Interactive Services Grid */}

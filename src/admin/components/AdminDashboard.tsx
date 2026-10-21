@@ -22,6 +22,12 @@ import {
 } from 'lucide-react';
 import { Submission, SubmissionStatus, AdminUser, AdminTab } from '../../types';
 import { sanitizeText } from '../../lib/uiSecurity';
+import { 
+  getCachedCounterStatus, 
+  invalidateCounterStatusCache, 
+  subscribeToCounterStatus,
+  authFetch 
+} from '../../lib/apiCache';
 
 interface AdminDashboardProps {
   adminUser: AdminUser;
@@ -65,6 +71,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
   useEffect(() => {
     fetchSubmissions();
     fetchCounterStatus();
+
+    const unsub = subscribeToCounterStatus((data) => {
+      setIsCounterOpen(data.isOpen);
+    });
+
+    return () => unsub();
   }, []);
 
   useEffect(() => {
@@ -74,11 +86,8 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
 
   const fetchCounterStatus = async () => {
     try {
-      const res = await fetch('/api/counter-status');
-      if (res.ok) {
-        const data = await res.json();
-        if (typeof data.isOpen === 'boolean') setIsCounterOpen(data.isOpen);
-      }
+      const data = await getCachedCounterStatus();
+      if (typeof data.isOpen === 'boolean') setIsCounterOpen(data.isOpen);
     } catch (e) {
       const saved = localStorage.getItem('atalseva_counter_open');
       if (saved !== null) setIsCounterOpen(saved === 'true');
@@ -89,15 +98,26 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     const newStatus = !isCounterOpen;
     setIsCounterOpen(newStatus);
     localStorage.setItem('atalseva_counter_open', String(newStatus));
+
+    const statusObj = {
+      isOpen: newStatus,
+      statusText: newStatus
+        ? 'COUNTER OPEN NOW — Accepting Document Submissions'
+        : 'COUNTER CLOSED NOW — Open Hours: Mon–Sat 8:30 AM – 7:30 PM IST',
+      reason: newStatus ? '' : 'COUNTER CLOSED',
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Instant 0ms broadcast across all components & open tabs
+    invalidateCounterStatusCache(statusObj);
+
     try {
       await fetch('/api/counter-status', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           isOpen: newStatus,
-          statusText: newStatus
-            ? 'COUNTER OPEN NOW — Accepting Document Submissions'
-            : 'COUNTER CLOSED NOW — Open Hours: Mon–Sat 8:30 AM – 7:30 PM IST',
+          statusText: statusObj.statusText,
         }),
       });
     } catch (e) {
@@ -113,9 +133,12 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         limit: '500',
       });
 
-      const res = await fetch(`/api/admin/submissions?${queryParams.toString()}`, {
-        headers: { Authorization: `Bearer ${adminToken}` },
-      });
+      const res = await authFetch(`/api/admin/submissions?${queryParams.toString()}`);
+
+      if (res.status === 401) {
+        setSubmissions([]);
+        return;
+      }
 
       if (res.ok) {
         const data = await res.json();
@@ -142,14 +165,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
         prev.map((sub) => (sub.id === id && sub.status === 'Pending' ? { ...sub, status: newStatus } : sub))
       );
 
-      await fetch(`/api/admin/submissions/${id}/status`, {
+      const res = await authFetch(`/api/admin/submissions/${id}/status`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
         },
         body: JSON.stringify({ status: newStatus }),
       });
+      if (res.status === 401) return;
     } catch (e) {
       console.error('Failed to update status:', e);
     }
@@ -161,10 +184,10 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!window.confirm(`Permanently erase client submission ${id} and physical files from backend server?`)) return;
 
     try {
-      await fetch(`/api/admin/submissions/${id}`, {
+      const res = await authFetch(`/api/admin/submissions/${id}`, {
         method: 'DELETE',
-        headers: { Authorization: `Bearer ${adminToken}` },
       });
+      if (res.status === 401) return;
 
       setSubmissions((prev) => prev.filter((s) => s.id !== id));
       setSelectedIds((prev) => prev.filter((item) => item !== id));
@@ -187,14 +210,14 @@ export const AdminDashboard: React.FC<AdminDashboardProps> = ({
     if (!window.confirm(`Permanently erase ${selectedIds.length} submission(s) and physical files completely from backend server?`)) return;
 
     try {
-      const res = await fetch('/api/admin/submissions/bulk-delete', {
+      const res = await authFetch('/api/admin/submissions/bulk-delete', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
         },
         body: JSON.stringify({ ids: selectedIds }),
       });
+      if (res.status === 401) return;
 
       if (res.ok) {
         setSubmissions((prev) => prev.filter((s) => !selectedIds.includes(s.id)));

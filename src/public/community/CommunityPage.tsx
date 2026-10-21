@@ -9,10 +9,10 @@ import {
   Maximize2,
   ChevronLeft,
   ChevronRight,
-  Play,
-  ExternalLink
+  Play
 } from 'lucide-react';
 import { Language, CommunityPost, CommunityCategory, AdminUser } from '../../types';
+import { subscribeToCommunityUpdates } from '../../lib/apiCache';
 
 interface CommunityPageProps {
   language: Language;
@@ -24,39 +24,6 @@ interface CommunityPageProps {
 }
 
 const POSTS_PER_PAGE = 10;
-
-const INITIAL_COMMUNITY_POSTS: CommunityPost[] = [
-  {
-    id: 'COMM_kendra_hours_notice',
-    title: 'Maa Vaishno e-World Official Counter Timings & Guidelines',
-    content: 'Important Notice for all citizens of Rairkalan and nearby areas:\n\nOur Kendra counter working hours are Monday to Saturday from 8:30 AM to 7:30 PM IST (Sunday Closed).\n\nYou can upload your documents online directly on this portal before visiting the Kendra to avoid waiting in queues. For any urgent queries, call us at +91 9896419275.',
-    category: 'Timing',
-    imageUrl: 'https://images.unsplash.com/photo-1587831990711-23ca6441447b?auto=format&fit=crop&w=1200&q=80',
-    important: true,
-    createdAt: '2026-10-10T06:00:00.000Z',
-    authorName: 'Surender Bajwa (Kendra Operator)',
-  },
-  {
-    id: 'COMM_pm_kisan_notice',
-    title: 'PM-Kisan 19th Installment e-KYC Verification Open Now',
-    content: 'All registered farmers in Panipat district must complete their biometric or OTP Aadhaar e-KYC to receive the next PM-Kisan Samman Nidhi installment.\n\nDocuments required:\n• Aadhaar Card\n• Registered Mobile Phone (for OTP)\n• Bank Passbook\n\nVisit Maa Vaishno e-World CSC Centre for instant biometric e-KYC.',
-    category: 'Scheme',
-    imageUrl: 'https://images.unsplash.com/photo-1628177142898-93e36e4e3a50?auto=format&fit=crop&w=1200&q=80',
-    important: true,
-    createdAt: '2026-10-09T14:30:00.000Z',
-    authorName: 'Surender Bajwa',
-  },
-  {
-    id: 'COMM_ayushman_pvc_notice',
-    title: 'Ayushman Bharat Golden Card PVC Smart Print Distribution',
-    content: 'Get your official Ayushman Bharat Card printed on high-durability waterproof PVC Plastic Smart Card with thermal lamination.\n\nBenefits:\n• ₹5 Lakh annual cashless hospital coverage\n• Valid across all empanelled government and private hospitals\n• Pocket-sized durable plastic card',
-    category: 'Notice',
-    imageUrl: 'https://images.unsplash.com/photo-1576091160399-112ba8d25d1d?auto=format&fit=crop&w=1200&q=80',
-    important: false,
-    createdAt: '2026-10-08T10:15:00.000Z',
-    authorName: 'Surender Bajwa',
-  }
-];
 
 export const CommunityPage: React.FC<CommunityPageProps> = ({
   language,
@@ -82,6 +49,10 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({
 
   useEffect(() => {
     fetchCommunityPosts();
+    const unsub = subscribeToCommunityUpdates(() => {
+      fetchCommunityPosts();
+    });
+    return () => unsub();
   }, []);
 
   const fetchCommunityPosts = async () => {
@@ -91,7 +62,7 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({
       const contentType = res.headers.get('content-type') || '';
       if (res.ok && contentType.includes('application/json')) {
         const data = await res.json();
-        if (data.posts && Array.isArray(data.posts) && data.posts.length > 0) {
+        if (data.posts && Array.isArray(data.posts)) {
           setPosts(data.posts);
           localStorage.setItem('mv_community_posts', JSON.stringify(data.posts));
           return;
@@ -99,17 +70,33 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({
       }
       const cached = localStorage.getItem('mv_community_posts');
       if (cached) {
-        setPosts(JSON.parse(cached));
-      } else {
-        setPosts(INITIAL_COMMUNITY_POSTS);
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(
+              (p: any) => !['COMM_kendra_hours_notice', 'COMM_pm_kisan_notice', 'COMM_ayushman_pvc_notice'].includes(p.id)
+            );
+            setPosts(cleaned);
+            return;
+          }
+        } catch {}
       }
+      setPosts([]);
     } catch (err) {
       const cached = localStorage.getItem('mv_community_posts');
       if (cached) {
-        setPosts(JSON.parse(cached));
-      } else {
-        setPosts(INITIAL_COMMUNITY_POSTS);
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(
+              (p: any) => !['COMM_kendra_hours_notice', 'COMM_pm_kisan_notice', 'COMM_ayushman_pvc_notice'].includes(p.id)
+            );
+            setPosts(cleaned);
+            return;
+          }
+        } catch {}
       }
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -248,19 +235,6 @@ export const CommunityPage: React.FC<CommunityPageProps> = ({
             </div>
 
             <div className="flex items-center space-x-2 shrink-0">
-              {/* Operator Switch Button */}
-              {adminUser && onNavigateToAdminCommunity && (
-                <button
-                  type="button"
-                  onClick={onNavigateToAdminCommunity}
-                  className="px-3 py-2 rounded-xl bg-[#30AFFF] hover:bg-[#209CEF] text-slate-950 text-xs font-black flex items-center space-x-1.5 cursor-pointer shadow-xs transition-colors"
-                  title="Switch to Operator Community Channel Management"
-                >
-                  <span>Manage Channel</span>
-                  <ExternalLink className="w-3.5 h-3.5" />
-                </button>
-              )}
-
               {/* Back to Home Button */}
               <button
                 type="button"

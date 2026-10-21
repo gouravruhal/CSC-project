@@ -23,10 +23,7 @@ coverage/
 # Local Data & Uploads
 data/uploads/*
 !data/uploads/.gitkeep
-data/db.json
-data/audit_logs.json
-data/community.json
-data/website_content.json
+data/*.json
 
 # Scratch & Temporary
 scratch/

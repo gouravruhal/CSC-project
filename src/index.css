@@ -1,6 +1,10 @@
 @import "tailwindcss";
 @custom-variant dark (&:where(.dark, .dark *));
 
+@theme {
+  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
 @layer base {
   :root {
     --bg-primary: #F4F9FF;
@@ -46,6 +50,10 @@
     box-sizing: border-box;
   }
 
+  html, body, #root, button, input, select, textarea, optgroup {
+    font-family: var(--font-sans, 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif);
+  }
+
   html {
     width: 100%;
     max-width: 100vw;
@@ -66,7 +74,7 @@
     -webkit-overflow-scrolling: touch;
     background-color: var(--bg-primary);
     color: var(--color-text);
-    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
     min-height: 100vh;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

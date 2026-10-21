@@ -5,7 +5,6 @@ import {
   Printer,
   Globe,
   ArrowRight,
-  ShieldCheck,
   Tag,
   AlertCircle,
   XCircle,
@@ -13,6 +12,7 @@ import {
   Layers
 } from 'lucide-react';
 import { Language, ManagedServiceItem } from '../../types';
+import { getCachedWebsiteContent, subscribeToWebsiteContent } from '../../lib/apiCache';
 
 interface ServicesSectionProps {
   language: Language;
@@ -39,24 +39,23 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
   const [closedToast, setClosedToast] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.content?.servicesList && Array.isArray(data.content.servicesList)) {
-          setServices(data.content.servicesList);
-        }
-      })
-      .catch(() => {
-        const cached = localStorage.getItem('mv_website_content');
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (parsed.servicesList && Array.isArray(parsed.servicesList)) {
-              setServices(parsed.servicesList);
-            }
-          } catch (e) {}
-        }
-      });
+    let isMounted = true;
+    getCachedWebsiteContent().then((content) => {
+      if (isMounted && content?.servicesList && Array.isArray(content.servicesList)) {
+        setServices(content.servicesList);
+      }
+    });
+
+    const unsub = subscribeToWebsiteContent((content) => {
+      if (isMounted && content?.servicesList && Array.isArray(content.servicesList)) {
+        setServices(content.servicesList);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   const query = searchQuery.toLowerCase().trim();
@@ -229,20 +228,7 @@ export const ServicesSection: React.FC<ServicesSectionProps> = ({
           })}
         </div>
 
-        {/* Simple Privacy Banner */}
-        <div className="p-4 rounded-2xl bg-[var(--bg-card)] border border-[var(--color-border)] flex items-center justify-between text-xs">
-          <div className="flex items-center space-x-2.5">
-            <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-[#C4F7CA] shrink-0" />
-            <p className="font-semibold text-[var(--color-text)]">
-              {language === 'hi'
-                ? 'आपके दस्तावेज 100% सुरक्षित हैं • पूर्ण गोपनीयता'
-                : 'Guaranteed customer document privacy & instant counter delivery'}
-            </p>
-          </div>
-          <span className="hidden sm:inline-block text-[11px] font-mono text-[var(--color-muted-text)]">
-            Maa Vaishno e-World
-          </span>
-        </div>
+
 
       </div>
     </section>

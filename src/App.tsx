@@ -21,6 +21,7 @@ import AdminWebsiteContentPage from './admin/pages/AdminWebsiteContentPage';
 import AdminWorkspacePage from './admin/pages/AdminWorkspacePage';
 
 import { Language, AdminUser } from './types';
+import { notifyAuthChanged, subscribeToAuthChanges, validateAdminSession, handleSessionExpired } from './lib/apiCache';
 
 // Helper to verify if genuine admin auth exists in storage
 const checkHasAdminAuth = (): boolean => {
@@ -47,16 +48,23 @@ const getInitialRoute = (): string => {
   if (hostname.startsWith('admin.')) {
     if (!hasAuth) {
       if (path === '/login') return 'admin-login';
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/');
+      }
       return 'home'; // STRICT AUTH GATE: Unauthenticated kicked to home
     }
     if (path.startsWith('/workspace')) return 'admin-workspace';
     if (path === '/community') return 'admin-community';
     if (path === '/content' || path === '/website-content') return 'admin-content';
-    if (path === '/login') return 'admin-dashboard';
+    if (path === '/login') {
+      window.history.replaceState({}, '', '/admin/dashboard');
+      return 'admin-dashboard';
+    }
     return 'admin-dashboard';
   }
 
-  // Public Routes
+  // Exact Valid Public Routes
+  if (path === '/' || path === '') return 'home';
   if (path === '/about') return 'about';
   if (path === '/services') return 'services';
   if (path === '/community') return 'community';
@@ -67,15 +75,18 @@ const getInitialRoute = (): string => {
 
   // Explicit Admin Login Path
   if (path === '/admin/login') {
-    return hasAuth ? 'admin-dashboard' : 'admin-login';
+    if (hasAuth) {
+      window.history.replaceState({}, '', '/admin/dashboard');
+      return 'admin-dashboard';
+    }
+    return 'admin-login';
   }
 
-  // STRICT AUTH GATE FOR ALL ADMIN ROUTES:
-  // If an unauthenticated user attempts to access ANY admin route:
-  // KICK TO HOME PAGE IMMEDIATELY!
-  if (path === '/admin' || path.startsWith('/admin/')) {
+  // STRICT AUTH GATE FOR ALL AUTHORIZED / ADMIN ROUTES:
+  // If an unauthenticated user attempts to access ANY authorized route:
+  // KICK TO HOME PAGE IMMEDIATELY AND RESET URL TO /
+  if (path === '/admin' || path.startsWith('/admin/') || path === '/dashboard' || path.startsWith('/workspace')) {
     if (!hasAuth) {
-      // Clear any corrupted tokens
       try {
         localStorage.removeItem('atalseva_admin_token');
         localStorage.removeItem('atalseva_admin_user');
@@ -89,10 +100,20 @@ const getInitialRoute = (): string => {
     // Authenticated Admin Pages
     if (path === '/admin/community') return 'admin-community';
     if (path === '/admin/content' || path === '/admin/website-content') return 'admin-content';
-    if (path.startsWith('/admin/workspace')) return 'admin-workspace';
+    if (path.startsWith('/admin/workspace') || path.startsWith('/workspace')) return 'admin-workspace';
+    if (path === '/admin/dashboard' || path === '/admin' || path === '/dashboard') return 'admin-dashboard';
+
+    // Unknown admin sub-route
+    if (window.location.pathname !== '/admin/dashboard') {
+      window.history.replaceState({}, '', '/admin/dashboard');
+    }
     return 'admin-dashboard';
   }
 
+  // ANY WRONG / UNKNOWN PAGE -> NAVIGATE TO HOME PAGE & CLEAN UP URL TO /
+  if (window.location.pathname !== '/') {
+    window.history.replaceState({}, '', '/');
+  }
   return 'home';
 };
 
@@ -158,26 +179,64 @@ export default function App() {
         if (path.startsWith('/workspace')) setCurrentRoute('admin-workspace');
         else if (path === '/community') setCurrentRoute('admin-community');
         else if (path === '/content' || path === '/website-content') setCurrentRoute('admin-content');
-        else if (path === '/login') setCurrentRoute('admin-dashboard');
-        else setCurrentRoute('admin-dashboard');
+        else {
+          setCurrentRoute('admin-dashboard');
+          if (path !== '/admin/dashboard' && path !== '/dashboard') {
+            window.history.replaceState({}, '', '/admin/dashboard');
+          }
+        }
         return;
       }
 
-      // Public Routes
-      if (path === '/about') setCurrentRoute('about');
-      else if (path === '/services') setCurrentRoute('services');
-      else if (path === '/community') setCurrentRoute('community');
-      else if (path === '/faq') setCurrentRoute('faq');
-      else if (path === '/contact') setCurrentRoute('contact');
-      else if (path === '/upload') setCurrentRoute('upload');
-      else if (path === '/success') setCurrentRoute('success');
-      else if (path === '/admin/login') {
-        setCurrentRoute(hasAuth ? 'admin-dashboard' : 'admin-login');
+      // Exact Valid Public Routes
+      if (path === '/' || path === '') {
+        setCurrentRoute('home');
+        return;
       }
-      else if (path === '/admin' || path.startsWith('/admin/')) {
-        // STRICT AUTH GATE:
-        // Any unauthorized request to /admin, /admin/dashboard, /admin/community, /admin/content
-        // NAVIGATES STRAIGHT TO HOME PAGE!
+      if (path === '/about') {
+        setCurrentRoute('about');
+        return;
+      }
+      if (path === '/services') {
+        setCurrentRoute('services');
+        return;
+      }
+      if (path === '/community') {
+        setCurrentRoute('community');
+        return;
+      }
+      if (path === '/faq') {
+        setCurrentRoute('faq');
+        return;
+      }
+      if (path === '/contact') {
+        setCurrentRoute('contact');
+        return;
+      }
+      if (path === '/upload') {
+        setCurrentRoute('upload');
+        return;
+      }
+      if (path === '/success') {
+        setCurrentRoute('success');
+        return;
+      }
+
+      // Explicit Admin Login Path
+      if (path === '/admin/login') {
+        if (hasAuth) {
+          setCurrentRoute('admin-dashboard');
+          window.history.replaceState({}, '', '/admin/dashboard');
+        } else {
+          setCurrentRoute('admin-login');
+        }
+        return;
+      }
+
+      // STRICT AUTH GATE FOR ALL AUTHORIZED / ADMIN ROUTES:
+      // Any unauthorized request to /admin, /admin/dashboard, /admin/community, /admin/content, etc.
+      // NAVIGATES STRAIGHT TO HOME PAGE AND RESETS URL!
+      if (path === '/admin' || path.startsWith('/admin/') || path === '/dashboard' || path.startsWith('/workspace')) {
         if (!hasAuth) {
           setCurrentRoute('home');
           try {
@@ -191,12 +250,26 @@ export default function App() {
         }
 
         // Authenticated Admin Page Routes
-        if (path === '/admin/community') setCurrentRoute('admin-community');
-        else if (path === '/admin/content' || path === '/admin/website-content') setCurrentRoute('admin-content');
-        else if (path.startsWith('/admin/workspace')) setCurrentRoute('admin-workspace');
-        else setCurrentRoute('admin-dashboard');
+        if (path === '/admin/community') {
+          setCurrentRoute('admin-community');
+        } else if (path === '/admin/content' || path === '/admin/website-content') {
+          setCurrentRoute('admin-content');
+        } else if (path.startsWith('/admin/workspace') || path.startsWith('/workspace')) {
+          setCurrentRoute('admin-workspace');
+        } else {
+          setCurrentRoute('admin-dashboard');
+          if (path !== '/admin/dashboard') {
+            window.history.replaceState({}, '', '/admin/dashboard');
+          }
+        }
+        return;
       }
-      else setCurrentRoute('home');
+
+      // ANY OTHER / WRONG PAGE -> NAVIGATE TO HOME PAGE AND RESET URL TO /
+      setCurrentRoute('home');
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/');
+      }
     };
 
     handleLocationChange();
@@ -204,17 +277,97 @@ export default function App() {
     return () => window.removeEventListener('popstate', handleLocationChange);
   }, []);
 
+  // Handle Admin Logout (Security Gate: wipes session and directly returns to Home)
+  const handleAdminLogout = () => {
+    const currentToken = adminToken || (typeof window !== 'undefined' ? localStorage.getItem('atalseva_admin_token') : '');
+    if (currentToken) {
+      fetch('/api/admin/logout', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${currentToken}`,
+        },
+      }).catch(() => {});
+    }
+    setAdminUser(null);
+    setAdminToken('');
+    try {
+      localStorage.removeItem('atalseva_admin_user');
+      localStorage.removeItem('atalseva_admin_token');
+      localStorage.removeItem('atalseva_admin_tab');
+    } catch {}
+    notifyAuthChanged(false);
+    if (window.location.pathname !== '/') {
+      window.history.replaceState({}, '', '/');
+    }
+    setCurrentRoute('home');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  // Strict Authentication Guard & Proactive Session Verification Effect
+  useEffect(() => {
+    if (currentRoute.startsWith('admin-') && currentRoute !== 'admin-login') {
+      const hasAuth = checkHasAdminAuth();
+      if (!hasAuth || !adminUser || !adminToken) {
+        handleAdminLogout();
+        return;
+      }
+
+      // Proactively verify session with backend to prevent console 401s
+      validateAdminSession().then((isValid) => {
+        if (!isValid) {
+          handleAdminLogout();
+        }
+      });
+    }
+  }, [currentRoute, adminUser, adminToken]);
+
+  // Periodic and tab focus session liveness check for active admin views
+  useEffect(() => {
+    const checkLiveSession = () => {
+      if (document.visibilityState === 'visible' && currentRoute.startsWith('admin-') && currentRoute !== 'admin-login') {
+        validateAdminSession().then((isValid) => {
+          if (!isValid) {
+            handleAdminLogout();
+          }
+        });
+      }
+    };
+
+    window.addEventListener('focus', checkLiveSession);
+    document.addEventListener('visibilitychange', checkLiveSession);
+    return () => {
+      window.removeEventListener('focus', checkLiveSession);
+      document.removeEventListener('visibilitychange', checkLiveSession);
+    };
+  }, [currentRoute]);
+
+  // Listen for session expiration events (from 401 intercepts or session check)
+  useEffect(() => {
+    const handleExpiredEvent = () => {
+      handleAdminLogout();
+    };
+
+    window.addEventListener('atalseva:session-expired', handleExpiredEvent);
+    return () => window.removeEventListener('atalseva:session-expired', handleExpiredEvent);
+  }, []);
+
+  // Success Route Guard: if user lands on /success without submission, redirect to home
+  useEffect(() => {
+    if (currentRoute === 'success' && !lastSubmission) {
+      setCurrentRoute('home');
+      if (window.location.pathname !== '/') {
+        window.history.replaceState({}, '', '/');
+      }
+    }
+  }, [currentRoute, lastSubmission]);
+
   // Sync route change to browser history
   const navigateTo = (route: string) => {
     const hasAuth = checkHasAdminAuth();
 
     // STRICT AUTH GATE: Prevent unauthenticated routing to any admin page
     if (route.startsWith('admin-') && route !== 'admin-login' && !hasAuth) {
-      setCurrentRoute('home');
-      if (window.location.pathname !== '/') {
-        window.history.replaceState({}, '', '/');
-      }
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+      handleAdminLogout();
       return;
     }
 
@@ -227,11 +380,12 @@ export default function App() {
     else if (route === 'contact') targetPath = '/contact';
     else if (route === 'upload') targetPath = '/upload';
     else if (route === 'success') targetPath = '/success';
-    else if (route === 'admin-login') targetPath = '/admin/login';
+    else if (route === 'admin-login') targetPath = hasAuth ? '/admin/dashboard' : '/admin/login';
     else if (route === 'admin-dashboard') targetPath = '/admin/dashboard';
     else if (route === 'admin-community') targetPath = '/admin/community';
     else if (route === 'admin-content') targetPath = '/admin/content';
     else if (route === 'admin-workspace') targetPath = '/admin/workspace';
+    else targetPath = '/';
 
     if (window.location.pathname !== targetPath) {
       window.history.pushState({}, '', targetPath);
@@ -267,23 +421,31 @@ export default function App() {
     navigateTo('success');
   };
 
+  // Cross-Tab and Global Auth State Synchronizer
+  useEffect(() => {
+    const unsub = subscribeToAuthChanges((data) => {
+      if (data.loggedIn && data.user && data.token) {
+        setAdminUser(data.user);
+        setAdminToken(data.token);
+      } else if (!data.loggedIn) {
+        setAdminUser(null);
+        setAdminToken('');
+        if (currentRoute.startsWith('admin-')) {
+          handleAdminLogout();
+        }
+      }
+    });
+    return () => unsub();
+  }, [currentRoute]);
+
   // Handle Admin Login Success
   const handleAdminLoginSuccess = (user: AdminUser, token: string) => {
     setAdminUser(user);
     setAdminToken(token);
     localStorage.setItem('atalseva_admin_user', JSON.stringify(user));
     localStorage.setItem('atalseva_admin_token', token);
+    notifyAuthChanged(true, token, user);
     navigateTo('admin-dashboard');
-  };
-
-  // Handle Admin Logout (Security Gate: wipes session and returns to Home)
-  const handleAdminLogout = () => {
-    setAdminUser(null);
-    setAdminToken('');
-    localStorage.removeItem('atalseva_admin_user');
-    localStorage.removeItem('atalseva_admin_token');
-    localStorage.removeItem('atalseva_admin_tab');
-    navigateTo('home');
   };
 
   return (
@@ -319,7 +481,11 @@ export default function App() {
             <HomePage language={language} onUploadClick={() => navigateTo('upload')} onSelectServiceForUpload={handleSelectServiceForUpload} onNavigateToServices={() => navigateTo('services')} onNavigateToCommunity={() => navigateTo('community')} />
           ) : (
             <AdminWorkspacePage
-              submissionId={new URLSearchParams(window.location.search).get('id') || ''}
+              submissionId={
+                new URLSearchParams(window.location.search).get('id') ||
+                window.location.pathname.replace(/^\/(admin\/)?workspace\/?/, '') ||
+                ''
+              }
               adminToken={adminToken}
               onBackToDashboard={() => navigateTo('admin-dashboard')}
               language={language}

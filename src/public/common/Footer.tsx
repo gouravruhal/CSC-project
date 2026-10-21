@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { MapPin, Phone, Mail, User } from 'lucide-react';
 import { Language, WebsiteContent } from '../../types';
+import { getCachedWebsiteContent, subscribeToWebsiteContent } from '../../lib/apiCache';
 
 interface FooterProps {
   setCurrentView: (view: string) => void;
@@ -23,14 +24,23 @@ export const Footer: React.FC<FooterProps> = ({
   });
 
   useEffect(() => {
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.content) {
-          setContent(data.content);
-        }
-      })
-      .catch(() => {});
+    let isMounted = true;
+    getCachedWebsiteContent().then((data) => {
+      if (isMounted && data) {
+        setContent(data);
+      }
+    });
+
+    const unsub = subscribeToWebsiteContent((data) => {
+      if (isMounted && data) {
+        setContent(data);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   const phone = content.phone || '+91 9896419275';

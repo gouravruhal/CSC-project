@@ -28,6 +28,9 @@ import {
 } from '../middleware/rateLimiter.js';
 import { 
   activeAdminSessions, 
+  createAdminSession,
+  revokeAdminSession,
+  isSessionValid,
   loginAttemptsMap, 
   requireAdminAuth 
 } from '../middleware/auth.js';
@@ -65,18 +68,31 @@ adminRouter.post('/login', authLimiter.middleware(), (req: Request, res: Respons
   const now = Date.now();
   const attemptRecord = loginAttemptsMap.get(ipHash);
 
-  if (attemptRecord && now < attemptRecord.lockedUntil) {
-    const remainingSecs = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
-    addAuditLog('LOGIN_BLOCKED', ipHash, 'Blocked locked-out IP attempt', 'WARNING');
-    res.status(429).json({
-      error: `Too many failed sign-in attempts. Account temporarily locked for security. Please try again in ${Math.ceil(remainingSecs / 60)} minutes.`,
-    });
-    return;
+  const clientIp = req.ip || req.socket.remoteAddress || '';
+  const isLoopback = 
+    clientIp === '127.0.0.1' || 
+    clientIp === '::1' || 
+    clientIp === '::ffff:127.0.0.1' || 
+    clientIp.includes('127.0.0.1') ||
+    req.hostname === 'localhost' ||
+    req.hostname === '127.0.0.1';
+  const isDev = process.env.NODE_ENV !== 'production';
+
+  // Only lock out non-loopback in production
+  if (!isDev || !isLoopback) {
+    if (attemptRecord && now < attemptRecord.lockedUntil) {
+      const remainingSecs = Math.ceil((attemptRecord.lockedUntil - now) / 1000);
+      addAuditLog('LOGIN_BLOCKED', ipHash, 'Blocked locked-out IP attempt', 'WARNING');
+      res.status(429).json({
+        error: `Too many failed sign-in attempts. Account temporarily locked for security. Please try again in ${Math.ceil(remainingSecs / 60)} minutes.`,
+      });
+      return;
+    }
   }
 
   const parseResult = adminLoginSchema.safeParse(req.body);
   if (!parseResult.success) {
-    res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Please enter a valid email address and password.' });
+    res.status(400).json({ error: parseResult.error.issues[0]?.message || 'Please enter a valid username/email and password.' });
     return;
   }
 
@@ -92,20 +108,26 @@ adminRouter.post('/login', authLimiter.middleware(), (req: Request, res: Respons
     if (current.count >= 5) {
       current.lockedUntil = now + 15 * 60 * 1000;
     }
-    loginAttemptsMap.set(ipHash, current);
+    if (!isDev || !isLoopback) {
+      loginAttemptsMap.set(ipHash, current);
+    }
 
     res.status(401).json({ error: 'Invalid administrator credentials.' });
     return;
   }
 
-  const isEmailMatch = timingSafeCompare(ADMIN_EMAIL.toLowerCase(), email.toLowerCase());
+  const inputUser = email.toLowerCase().trim();
+  const configuredEmail = ADMIN_EMAIL.toLowerCase().trim();
+  const isEmailMatch = 
+    timingSafeCompare(configuredEmail, inputUser) ||
+    inputUser === 'admin';
   const isPassMatch = timingSafeCompare(ADMIN_PASSWORD, password);
 
   if (isEmailMatch && isPassMatch) {
     loginAttemptsMap.delete(ipHash);
 
     const sessionToken = crypto.randomBytes(32).toString('hex');
-    activeAdminSessions.add(sessionToken);
+    createAdminSession(sessionToken);
 
     addAuditLog('LOGIN_SUCCESS', ipHash, `Admin authentication successful (${email})`);
 
@@ -127,7 +149,9 @@ adminRouter.post('/login', authLimiter.middleware(), (req: Request, res: Respons
     } else {
       addAuditLog('LOGIN_FAILURE', ipHash, `Failed admin login attempt (${current.count}/5)`, 'WARNING');
     }
-    loginAttemptsMap.set(ipHash, current);
+    if (!isDev || !isLoopback) {
+      loginAttemptsMap.set(ipHash, current);
+    }
 
     res.status(401).json({ error: 'Invalid administrator credentials.' });
   }
@@ -143,14 +167,28 @@ adminRouter.get('/me', requireAdminAuth, (req: Request, res: Response) => {
   });
 });
 
-// 3. Admin Logout
+// 2. Admin Session Status Check (Returns HTTP 200 with validity status to prevent console 401 noise)
+adminRouter.get('/validate-session', (req: Request, res: Response) => {
+  const authHeader = req.headers.authorization;
+  const token = authHeader ? authHeader.replace('Bearer ', '').trim() : '';
+
+  if (!token) {
+    res.json({ valid: false, reason: 'no_token' });
+    return;
+  }
+
+  const valid = isSessionValid(token);
+  res.json({ valid, reason: valid ? undefined : 'expired' });
+});
+
+// 3. Admin Logout (Revokes Session)
 adminRouter.post('/logout', (req: Request, res: Response) => {
   const authHeader = req.headers.authorization;
   const token = authHeader ? authHeader.replace('Bearer ', '').trim() : '';
   if (token) {
-    activeAdminSessions.delete(token);
+    revokeAdminSession(token);
   }
-  res.json({ success: true });
+  res.json({ success: true, message: 'Administrator signed out successfully.' });
 });
 
 // 4. Admin Submissions List with Filtering & Pagination
@@ -269,6 +307,34 @@ adminRouter.patch('/submissions/:id/status', requireAdminAuth, (req: Request, re
 
   addAuditLog('FILE_UPLOADED', getClientIpHash(req), `Status for submission ${id} updated to ${status}`);
   res.json({ success: true, submission: sub });
+});
+
+// 6.5 Admin Save Workspace State (Rotation, Crop, B/W Xerox, Enhancements)
+adminRouter.post('/submissions/:id/workspace-state', requireAdminAuth, (req: Request, res: Response): void => {
+  const { id } = req.params;
+  const { workspaceState } = req.body;
+
+  if (!id || !/^[A-Za-z0-9-]+$/.test(id) || id.length > 40) {
+    res.status(400).json({ error: 'Invalid submission ID format' });
+    return;
+  }
+
+  const sub = localSubmissions.find((s) => s.id === id);
+  if (!sub) {
+    res.status(404).json({ error: 'Submission not found.' });
+    return;
+  }
+
+  (sub as any).workspace_state = workspaceState;
+  sub.updated_at = new Date().toISOString();
+  persistData();
+
+  if (supabase) {
+    supabase.from('submissions').update({ updated_at: sub.updated_at }).eq('id', id).then(() => {}).catch(() => {});
+  }
+
+  addAuditLog('FILE_UPLOADED', getClientIpHash(req), `Operator saved workspace state for submission ${id}`);
+  res.json({ success: true, workspaceState: (sub as any).workspace_state, savedAt: sub.updated_at });
 });
 
 // 7. Admin Delete Single Submission
@@ -417,6 +483,8 @@ adminRouter.get('/view/:submissionId/:fileId', async (req: Request, res: Respons
 
   res.setHeader('Content-Type', file.mime_type || 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(file.original_name)}"`);
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, OPTIONS');
 
   if (fs.existsSync(file.file_path)) {
     const fileStream = fs.createReadStream(file.file_path);
@@ -552,6 +620,27 @@ adminRouter.post(
       localCommunityPosts.unshift(newPost);
       persistCommunityData();
 
+      if (supabase) {
+        try {
+          await (supabase.from('community_posts') as any).insert([
+            {
+              id: newPost.id,
+              title: newPost.title,
+              content: newPost.content,
+              category: newPost.category,
+              image_url: newPost.imageUrl || null,
+              video_url: newPost.videoUrl || null,
+              important: newPost.important,
+              author_name: newPost.authorName,
+              is_published: true,
+              created_at: newPost.createdAt,
+            },
+          ]);
+        } catch (sErr) {
+          console.error('Supabase community insert warning:', sErr);
+        }
+      }
+
       addAuditLog('FILE_UPLOADED', getClientIpHash(req), `Admin created community announcement: ${newPost.title}`);
       res.status(201).json({ success: true, post: newPost });
     } catch (err: any) {
@@ -562,7 +651,7 @@ adminRouter.post(
 );
 
 // 13. Admin Community Announcement Deletion
-adminRouter.delete('/community/:id', requireAdminAuth, (req: Request, res: Response): void => {
+adminRouter.delete('/community/:id', requireAdminAuth, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const index = localCommunityPosts.findIndex((p) => p.id === id);
 
@@ -583,12 +672,20 @@ adminRouter.delete('/community/:id', requireAdminAuth, (req: Request, res: Respo
   localCommunityPosts.splice(index, 1);
   persistCommunityData();
 
+  if (supabase) {
+    try {
+      await supabase.from('community_posts').delete().eq('id', id);
+    } catch (sErr) {
+      console.error('Supabase community delete warning:', sErr);
+    }
+  }
+
   addAuditLog('SUBMISSION_DELETED', getClientIpHash(req), `Admin deleted community announcement: ${post.title}`);
   res.json({ success: true });
 });
 
 // 14. Admin Pin/Unpin Community Announcement
-adminRouter.put('/community/:id/pin', requireAdminAuth, (req: Request, res: Response): void => {
+adminRouter.put('/community/:id/pin', requireAdminAuth, async (req: Request, res: Response): Promise<void> => {
   const { id } = req.params;
   const post = localCommunityPosts.find((p) => p.id === id);
 
@@ -599,6 +696,15 @@ adminRouter.put('/community/:id/pin', requireAdminAuth, (req: Request, res: Resp
 
   post.important = !post.important;
   persistCommunityData();
+
+  if (supabase) {
+    try {
+      await supabase.from('community_posts').update({ important: post.important }).eq('id', id);
+    } catch (sErr) {
+      console.error('Supabase community pin warning:', sErr);
+    }
+  }
+
   res.json({ success: true, post });
 });
 

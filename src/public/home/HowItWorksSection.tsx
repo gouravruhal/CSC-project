@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Language, EquipmentItem } from '../../types';
+import { getCachedWebsiteContent, subscribeToWebsiteContent } from '../../lib/apiCache';
 
 interface HowItWorksSectionProps {
   language: Language;
@@ -20,24 +21,23 @@ export const HowItWorksSection: React.FC<HowItWorksSectionProps> = ({ language }
   });
 
   useEffect(() => {
-    fetch('/api/website-content')
-      .then((res) => res.json())
-      .then((data) => {
-        if (data?.content?.equipmentList && Array.isArray(data.content.equipmentList)) {
-          setEquipmentList(data.content.equipmentList);
-        }
-      })
-      .catch(() => {
-        const cached = localStorage.getItem('mv_website_content');
-        if (cached) {
-          try {
-            const parsed = JSON.parse(cached);
-            if (parsed.equipmentList && Array.isArray(parsed.equipmentList)) {
-              setEquipmentList(parsed.equipmentList);
-            }
-          } catch (e) {}
-        }
-      });
+    let isMounted = true;
+    getCachedWebsiteContent().then((content) => {
+      if (isMounted && content?.equipmentList && Array.isArray(content.equipmentList)) {
+        setEquipmentList(content.equipmentList);
+      }
+    });
+
+    const unsub = subscribeToWebsiteContent((content) => {
+      if (isMounted && content?.equipmentList && Array.isArray(content.equipmentList)) {
+        setEquipmentList(content.equipmentList);
+      }
+    });
+
+    return () => {
+      isMounted = false;
+      unsub();
+    };
   }, []);
 
   if (equipmentList.length === 0) {

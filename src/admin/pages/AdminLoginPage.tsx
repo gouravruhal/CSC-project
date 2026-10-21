@@ -19,16 +19,25 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
   const [csrfToken, setCsrfToken] = useState('');
 
   useEffect(() => {
+    let isMounted = true;
     fetch('/api/csrf-token')
-      .then((res) => res.json())
+      .then((res) => {
+        if (res.ok) return res.json();
+        return null;
+      })
       .then((data) => {
-        if (data.csrfToken) setCsrfToken(data.csrfToken);
+        if (isMounted && data?.csrfToken) setCsrfToken(data.csrfToken);
       })
       .catch((e) => console.error('Failed to fetch CSRF token:', e));
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setErrorMsg('');
 
     if (!email.trim() || !password) {
@@ -45,7 +54,7 @@ export const AdminLoginPage: React.FC<AdminLoginPageProps> = ({
         body: JSON.stringify({ email: email.trim(), password, csrfToken }),
       });
 
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
 
       if (res.ok && data.token) {
         onLoginSuccess(data.user, data.token);

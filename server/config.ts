@@ -1,7 +1,13 @@
 import path from 'path';
 import fs from 'fs';
 import dotenv from 'dotenv';
+import WebSocket from 'ws';
 import { createClient } from '@supabase/supabase-js';
+
+// Polyfill native WebSocket for Node.js so Supabase doesn't error
+if (typeof (globalThis as any).WebSocket === 'undefined') {
+  (globalThis as any).WebSocket = WebSocket;
+}
 
 dotenv.config();
 
@@ -21,6 +27,7 @@ export const DB_FILE = path.join(DATA_DIR, 'db.json');
 export const LOGS_FILE = path.join(DATA_DIR, 'audit_logs.json');
 export const COMMUNITY_FILE = path.join(DATA_DIR, 'community.json');
 export const WEBSITE_CONTENT_FILE = path.join(DATA_DIR, 'website_content.json');
+export const SESSIONS_FILE = path.join(DATA_DIR, 'admin_sessions.json');
 
 // Ensure required directories exist (safely handled on read-only serverless filesystems)
 try {

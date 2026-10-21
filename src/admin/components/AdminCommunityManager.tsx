@@ -22,6 +22,7 @@ import {
 import { CommunityPost, CommunityCategory } from '../../types';
 import ImageCropModal from './ImageCropModal';
 import { sanitizeText } from '../../lib/uiSecurity';
+import { notifyCommunityChanged, authFetch } from '../../lib/apiCache';
 
 interface AdminCommunityManagerProps {
   adminToken: string;
@@ -75,15 +76,27 @@ export const AdminCommunityManager: React.FC<AdminCommunityManagerProps> = ({ ad
         const data = await res.json();
         if (data.posts && Array.isArray(data.posts)) {
           setPosts(data.posts);
+          localStorage.setItem('mv_community_posts', JSON.stringify(data.posts));
           return;
         }
       }
       const cached = localStorage.getItem('mv_community_posts');
-      if (cached) setPosts(JSON.parse(cached));
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter(
+              (p: any) => !['COMM_kendra_hours_notice', 'COMM_pm_kisan_notice', 'COMM_ayushman_pvc_notice'].includes(p.id)
+            );
+            setPosts(cleaned);
+            return;
+          }
+        } catch {}
+      }
+      setPosts([]);
     } catch (e) {
       console.error('Failed to load community posts:', e);
-      const cached = localStorage.getItem('mv_community_posts');
-      if (cached) setPosts(JSON.parse(cached));
+      setPosts([]);
     } finally {
       setLoading(false);
     }
@@ -206,13 +219,12 @@ export const AdminCommunityManager: React.FC<AdminCommunityManagerProps> = ({ ad
         formData.append('videoUrl', videoUrlInput.trim());
       }
 
-      const res = await fetch('/api/community', {
+      const res = await authFetch('/api/community', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
         body: formData,
       });
+
+      if (res.status === 401) return;
 
       const data = await res.json();
       if (!res.ok) {
@@ -234,6 +246,7 @@ export const AdminCommunityManager: React.FC<AdminCommunityManagerProps> = ({ ad
 
       resetForm();
       setShowCreateModal(false);
+      notifyCommunityChanged();
       showToast('Announcement published successfully to Community Channel!');
     } catch (err: any) {
       console.error('Failed to create post:', err);
@@ -248,12 +261,11 @@ export const AdminCommunityManager: React.FC<AdminCommunityManagerProps> = ({ ad
     if (!confirmed) return;
 
     try {
-      const res = await fetch(`/api/community/${id}`, {
+      const res = await authFetch(`/api/community/${id}`, {
         method: 'DELETE',
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
       });
+
+      if (res.status === 401) return;
 
       if (res.ok) {
         setPosts((prev) => {
@@ -263,6 +275,7 @@ export const AdminCommunityManager: React.FC<AdminCommunityManagerProps> = ({ ad
           } catch (e) {}
           return updated;
         });
+        notifyCommunityChanged();
         showToast('Announcement and associated media deleted.');
       } else {
         const data = await res.json();

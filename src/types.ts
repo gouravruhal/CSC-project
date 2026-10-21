@@ -20,8 +20,10 @@ export interface Submission {
   description?: string;
   files: UploadedFile[];
   created_at: string;
+  updated_at?: string;
   ip_hash: string;
   status: SubmissionStatus;
+  workspace_state?: Record<string, any>;
 }
 
 export interface AdminStats {

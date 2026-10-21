@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { WebsiteContent, EquipmentItem, ManagedServiceItem } from '../../types';
 import { sanitizeText, sanitizePhone, validateSafeUrl } from '../../lib/uiSecurity';
+import { invalidateWebsiteContentCache, authFetch } from '../../lib/apiCache';
 
 interface AdminWebsiteContentManagerProps {
   adminToken: string;
@@ -32,28 +33,7 @@ const DEFAULT_CONTENT: WebsiteContent = {
   address: 'Rairkalan, Panipat, Haryana 132103',
   mapsUrl: 'https://www.google.com/maps/search/?api=1&query=29.48823169134412,76.83097890513511',
   workingHoursText: 'Monday to Saturday: 8:30 AM to 7:30 PM (Sunday Closed)',
-  equipmentList: [
-    {
-      id: 'eq-1',
-      name: 'High-Performance Workstation PC',
-      imageUrl: 'https://images.unsplash.com/photo-1587831990711-23ca6441447b?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-2',
-      name: 'Heavy-Duty Laser Printer & Copier',
-      imageUrl: 'https://images.unsplash.com/photo-1612815154858-60aa4c59eaa6?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-3',
-      name: 'HD Optical Document Scanner',
-      imageUrl: 'https://images.unsplash.com/photo-1563986768609-322da13575f3?auto=format&fit=crop&w=600&q=80',
-    },
-    {
-      id: 'eq-4',
-      name: 'PVC Smart Card Thermal Printer',
-      imageUrl: 'https://images.unsplash.com/photo-1563986768494-4dee2763ff3f?auto=format&fit=crop&w=600&q=80',
-    },
-  ],
+  equipmentList: [],
   servicesList: [
     { id: 'srv-1', name: 'Hindi Typing Work', category: 'Typing', isClosed: false },
     { id: 'srv-2', name: 'English Typing Work', category: 'Typing', isClosed: false },
@@ -130,9 +110,9 @@ export const AdminWebsiteContentManager: React.FC<AdminWebsiteContentManagerProp
           const merged: WebsiteContent = {
             ...DEFAULT_CONTENT,
             ...data.content,
-            equipmentList: data.content.equipmentList && data.content.equipmentList.length > 0
+            equipmentList: Array.isArray(data.content.equipmentList)
               ? data.content.equipmentList
-              : DEFAULT_CONTENT.equipmentList,
+              : [],
             servicesList: data.content.servicesList && data.content.servicesList.length > 0
               ? data.content.servicesList
               : DEFAULT_CONTENT.servicesList,
@@ -143,11 +123,29 @@ export const AdminWebsiteContentManager: React.FC<AdminWebsiteContentManagerProp
         }
       }
       const cached = localStorage.getItem('mv_website_content');
-      if (cached) setContent({ ...DEFAULT_CONTENT, ...JSON.parse(cached) });
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setContent({
+            ...DEFAULT_CONTENT,
+            ...parsed,
+            equipmentList: Array.isArray(parsed.equipmentList) ? parsed.equipmentList : [],
+          });
+        } catch {}
+      }
     } catch (e) {
       console.error('Failed to fetch website content:', e);
       const cached = localStorage.getItem('mv_website_content');
-      if (cached) setContent({ ...DEFAULT_CONTENT, ...JSON.parse(cached) });
+      if (cached) {
+        try {
+          const parsed = JSON.parse(cached);
+          setContent({
+            ...DEFAULT_CONTENT,
+            ...parsed,
+            equipmentList: Array.isArray(parsed.equipmentList) ? parsed.equipmentList : [],
+          });
+        } catch {}
+      }
     } finally {
       setLoading(false);
     }
@@ -164,19 +162,21 @@ export const AdminWebsiteContentManager: React.FC<AdminWebsiteContentManagerProp
     setErrorMessage('');
 
     try {
-      const res = await fetch('/api/admin/website-content', {
+      const res = await authFetch('/api/admin/website-content', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${adminToken}`,
         },
         body: JSON.stringify(content),
       });
+
+      if (res.status === 401) return;
 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to update website content');
 
       localStorage.setItem('mv_website_content', JSON.stringify(content));
+      invalidateWebsiteContentCache(content);
       showToast('Website content saved & synchronized with public website!');
     } catch (err: any) {
       console.error('Error saving content:', err);
@@ -197,13 +197,12 @@ export const AdminWebsiteContentManager: React.FC<AdminWebsiteContentManagerProp
       const formData = new FormData();
       formData.append('image', file);
 
-      const res = await fetch('/api/admin/equipment-image', {
+      const res = await authFetch('/api/admin/equipment-image', {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${adminToken}`,
-        },
         body: formData,
       });
+
+      if (res.status === 401) return;
 
       if (!res.ok) throw new Error('Failed to upload image file');
       const data = await res.json();

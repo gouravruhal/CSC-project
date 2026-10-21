@@ -8,7 +8,7 @@
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --packages=external --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
+    "clean": "node -e \"fs.rmSync('dist', { recursive: true, force: true }); try { fs.unlinkSync('server.js'); } catch {}\"",
     "lint": "tsc --noEmit"
   },
   "dependencies": {
@@ -24,6 +24,7 @@
     "lucide-react": "^0.546.0",
     "motion": "^12.23.24",
     "multer": "^2.2.0",
+    "pdf-lib": "^1.17.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
     "vite": "^6.2.3",

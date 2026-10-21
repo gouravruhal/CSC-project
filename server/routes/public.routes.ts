@@ -55,6 +55,7 @@ publicRouter.get('/csrf-token', csrfLimiter.middleware(), (req: Request, res: Re
 // 2. Counter Status
 publicRouter.get('/counter-status', (req: Request, res: Response) => {
   const currentCheck = isCounterCurrentlyOpen();
+  res.setHeader('Cache-Control', 'public, max-age=10, stale-while-revalidate=30');
   res.json({
     isOpen: currentCheck.isOpen,
     reason: currentCheck.reason || '',
@@ -88,6 +89,7 @@ publicRouter.post('/counter-status', async (req: Request, res: Response) => {
 
 // 3. Website Content Configuration (Public)
 publicRouter.get('/website-content', (req: Request, res: Response) => {
+  res.setHeader('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
   res.json({ content: localWebsiteContent });
 });
 

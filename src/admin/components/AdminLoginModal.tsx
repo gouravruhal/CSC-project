@@ -23,6 +23,7 @@ export const AdminLoginModal: React.FC<AdminLoginModalProps> = ({
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setLoading(true);
 
     const targetEmail = email.trim() || 'surenderbajwa1@gmail.com';

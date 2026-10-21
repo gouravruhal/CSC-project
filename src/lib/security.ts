@@ -89,6 +89,21 @@ export class SlidingWindowRateLimiter {
 
   public middleware(keyExtractor?: (req: Request) => string) {
     return (req: Request, res: Response, next: NextFunction): void => {
+      // In development or local loopback, allow smooth development without 429 lockouts
+      const clientIp = req.ip || req.socket.remoteAddress || '';
+      const isLoopback = 
+        clientIp === '127.0.0.1' || 
+        clientIp === '::1' || 
+        clientIp === '::ffff:127.0.0.1' || 
+        clientIp.includes('127.0.0.1') ||
+        req.hostname === 'localhost' ||
+        req.hostname === '127.0.0.1';
+
+      if (process.env.NODE_ENV !== 'production' && isLoopback) {
+        next();
+        return;
+      }
+
       const key = keyExtractor ? keyExtractor(req) : getClientIpHash(req);
       const result = this.check(key);
 
@@ -377,13 +392,13 @@ export const adminLoginSchema = z.object({
   email: z
     .string()
     .trim()
-    .min(5, 'Email must be at least 5 characters')
-    .max(100, 'Email must not exceed 100 characters')
-    .email('Please enter a valid email address'),
+    .min(3, 'Username or email must be at least 3 characters')
+    .max(100, 'Username or email must not exceed 100 characters'),
   password: z
     .string()
     .min(1, 'Password is required')
     .max(128, 'Password must not exceed 128 characters'),
+  csrfToken: z.string().optional(),
 });
 
 // Community Announcement Post
