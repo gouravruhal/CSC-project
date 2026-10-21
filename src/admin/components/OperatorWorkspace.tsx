@@ -93,7 +93,7 @@ export const OperatorWorkspace: React.FC<OperatorWorkspaceProps> = ({ submission
   return (
     <div className="w-full max-w-7xl mx-auto p-3 sm:p-5">
       <div className="flex flex-col lg:flex-row gap-4 items-start w-full">
-        <div className="w-full lg:w-72 xl:w-80 shrink-0 space-y-4 print:hidden">
+        <div className="w-full lg:w-72 xl:w-80 shrink-0 space-y-4 print:hidden lg:sticky lg:top-20">
           <CustomerDetailCard submission={submission} />
           <FileListSidebar
             files={submission.files as any}

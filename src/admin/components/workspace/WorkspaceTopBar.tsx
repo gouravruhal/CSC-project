@@ -19,7 +19,7 @@ export const WorkspaceTopBar: React.FC<WorkspaceTopBarProps> = ({
   onPrint,
 }) => {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--color-border)] shadow-xs print:hidden">
+    <div className="sticky top-20 z-30 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-3.5 rounded-2xl bg-[var(--bg-card)]/95 backdrop-blur-md border border-[var(--color-border)] shadow-xs print:hidden">
       {/* Left: Back button & Active Document Name */}
       <div className="flex items-center space-x-3 min-w-0">
         <button

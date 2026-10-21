@@ -1,13 +1,7 @@
 import React, { useState } from 'react';
-import { 
-  Sun, 
-  Moon, 
-  ExternalLink, 
-  Menu, 
-  X,
-  LogOut
-} from 'lucide-react';
+import { Sun, Moon, ExternalLink, Menu, X, LogOut } from 'lucide-react';
 import { Language, AdminTab } from '../../types';
+import { NavMobileDrawer } from './NavMobileDrawer';
 
 interface NavbarProps {
   currentView: string;
@@ -35,15 +29,10 @@ export const Navbar: React.FC<NavbarProps> = ({
 
   const handleNavClick = (view: string) => {
     if (isAdminView) {
-      if (view === 'home') {
-        setCurrentView('home');
-      } else if (view === 'dashboard') {
-        setCurrentView('admin-dashboard');
-      } else if (view === 'community') {
-        setCurrentView('admin-community');
-      } else if (view === 'website-content') {
-        setCurrentView('admin-content');
-      }
+      if (view === 'home') setCurrentView('home');
+      else if (view === 'dashboard') setCurrentView('admin-dashboard');
+      else if (view === 'community') setCurrentView('admin-community');
+      else if (view === 'website-content') setCurrentView('admin-content');
       setMobileMenuOpen(false);
       return;
     }
@@ -64,7 +53,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full max-w-full overflow-x-hidden bg-[var(--bg-card)] backdrop-blur-md border-b border-[var(--color-border)] transition-colors duration-200 shadow-2xs">
+    <header className="fixed top-0 left-0 right-0 z-50 w-full bg-[var(--bg-card)]/95 backdrop-blur-md border-b border-[var(--color-border)] transition-colors duration-200 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         
         {/* Left Side: Logo + "MAA VAISHNO e-WORLD" */}
@@ -112,7 +101,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             );
           })}
 
-          {/* Atal Portal or Public Portal Link */}
           {isAdminView ? (
             <button
               onClick={() => setCurrentView('home')}
@@ -170,7 +158,6 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Screen Controls */}
         <div className="flex md:hidden items-center space-x-2">
-          {/* Quick Theme Toggle for Mobile */}
           <button
             onClick={() => setDarkMode(!darkMode)}
             className="p-2 rounded-xl bg-[var(--bg-primary)] border border-[var(--color-border)] text-[var(--color-text)]"
@@ -179,7 +166,6 @@ export const Navbar: React.FC<NavbarProps> = ({
             {darkMode ? <Sun className="w-4 h-4 text-[var(--accent-primary)]" /> : <Moon className="w-4 h-4 text-[var(--color-muted-text)]" />}
           </button>
 
-          {/* Hamburger Menu Toggle Button */}
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 rounded-xl bg-[var(--bg-primary)] border border-[var(--color-border)] text-[var(--color-text)]"
@@ -187,70 +173,17 @@ export const Navbar: React.FC<NavbarProps> = ({
             {mobileMenuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
           </button>
         </div>
-
       </div>
 
-      {/* Mobile Drawer */}
-      {mobileMenuOpen && (
-        <div className="md:hidden border-t border-[var(--color-border)] bg-[var(--bg-card)] px-4 py-4 space-y-2 animate-in slide-in-from-top-4 duration-150 text-sm font-semibold shadow-lg">
-          {navItems.map((item) => {
-            const isActive = isAdminView
-              ? (currentView === 'admin-dashboard' && item.id === 'dashboard') ||
-                (currentView === 'admin-community' && item.id === 'community') ||
-                (currentView === 'admin-content' && item.id === 'website-content')
-              : currentView === item.id;
-            return (
-              <button
-                key={item.id}
-                onClick={() => handleNavClick(item.id)}
-                className={`w-full text-left py-2.5 px-4 rounded-xl transition-all ${
-                  isActive 
-                    ? 'bg-[var(--accent-soft)] text-[var(--color-text)] font-extrabold border border-[var(--color-border)]' 
-                    : 'text-[var(--color-text)] hover:bg-[var(--bg-primary)]'
-                }`}
-              >
-                {item.label}
-              </button>
-            );
-          })}
-          {isAdminView ? (
-            <>
-              <button
-                onClick={() => {
-                  setCurrentView('home');
-                  setMobileMenuOpen(false);
-                }}
-                className="w-full text-left py-2.5 px-4 rounded-xl text-[var(--color-text)] hover:bg-[var(--bg-primary)] flex items-center justify-between"
-              >
-                <span>View Public Site</span>
-                <ExternalLink className="w-4 h-4 opacity-70" />
-              </button>
-              {onLogout && (
-                <button
-                  onClick={() => {
-                    setMobileMenuOpen(false);
-                    onLogout();
-                  }}
-                  className="w-full text-left py-2.5 px-4 rounded-xl text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30 flex items-center justify-between font-bold"
-                >
-                  <span>Logout</span>
-                  <LogOut className="w-4 h-4" />
-                </button>
-              )}
-            </>
-          ) : (
-            <a
-              href="https://csc.gov.in"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="w-full text-left py-2.5 px-4 rounded-xl text-[var(--color-text)] hover:bg-[var(--bg-primary)] flex items-center justify-between"
-            >
-              <span>Atal Portal</span>
-              <ExternalLink className="w-4 h-4 opacity-70" />
-            </a>
-          )}
-        </div>
-      )}
+      {/* Mobile Drawer Component */}
+      <NavMobileDrawer
+        isOpen={mobileMenuOpen}
+        navItems={navItems}
+        isAdminView={isAdminView}
+        currentView={currentView}
+        onNavClick={handleNavClick}
+        onLogout={onLogout}
+      />
     </header>
   );
 };

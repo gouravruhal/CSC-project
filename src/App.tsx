@@ -473,7 +473,7 @@ export default function App() {
       />
 
       {/* Main View Router */}
-      <main className="flex-1 w-full max-w-full overflow-x-hidden">
+      <main className="flex-1 w-full max-w-full overflow-x-hidden pt-16">
         
         {/* 1. Admin Workspace Processing Studio Page (Strict Auth Gate) */}
         {currentRoute === 'admin-workspace' ? (
